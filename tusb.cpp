@@ -147,30 +147,25 @@ const tusb_desc_device_t my_device_descriptor = {
     .bNumConfigurations = 0x01
 };
 
-typedef struct TU_ATTR_PACKED
-{   
-    uint8_t report_id;
-    uint8_t buttons; /**< buttons mask for currently pressed buttons in the mouse. */
-    int16_t x;       /**< Current x position of the mouse. */
-    int16_t y;       /**< Current y position of the mouse. */
-    int8_t wheel;    /**< Current delta wheel movement on the mouse. */
-    int8_t pan;      // using AC Pan
-} hid_abs_mouse_report_custom_t;
 
-void test(uint8_t report_id,
-    uint8_t buttons, int16_t x, int16_t y, int8_t vertical, int8_t horizontal) {
-    uint8_t report[6];
-    report[0] = buttons;
-    report[1] = x & 0xFF; // Least significant byte of deltaX
-    report[2] = (x >> 8) & 0xFF; // Most significant byte of deltaX
-    report[3] = y & 0xFF; // Least significant byte of deltaY
-    report[4] = (y >> 8) & 0xFF; // Most significant byte of deltaY
-    report[5] = vertical;
-    for (size_t i = 0; i < sizeof(report); ++i) {
-        Serial.print(((uint8_t*)&report)[i], HEX);
-        Serial.print(" ");
+
+void process_input(int id, int btn, int delta_x, int delta_y, int scroll, int pan) {
+    uint8_t buffer[8];
+    buffer[0] = static_cast<uint8_t>(id);
+    buffer[1] = static_cast<uint8_t>(btn);
+    buffer[2] = static_cast<uint8_t>(delta_x & 0xFF);
+    buffer[3] = static_cast<uint8_t>((delta_x >> 8) & 0xFF);
+    buffer[4] = static_cast<uint8_t>(delta_y & 0xFF);
+    buffer[5] = static_cast<uint8_t>((delta_y >> 8) & 0xFF);
+    buffer[6] = static_cast<uint8_t>(scroll);
+    buffer[7] = static_cast<uint8_t>(pan);
+    
+
+    Serial.print("Buffer: ");
+    for (int i = 0; i < sizeof(buffer); i++) {
+        Serial.printf("%02X ", buffer[i]);
     }
-    Serial.println();
+    
 }
 #define RX2 15
 #define TX2 16
@@ -194,104 +189,17 @@ void app_main(void)
     while (1) {
         
         if (tud_mounted()) {
-            String data;
-            if(Serial.available()){
-                data = Serial.readStringUntil('\n');
-                //Serial.println(data);
-            }
-            data.trim();
-            if (data == "Ldown") {
-                mouse_buttons |= MOUSE_BUTTON_LEFT;
-                tud_hid_mouse_report(HID_ITF_PROTOCOL_MOUSE, mouse_buttons, 0, 0, 0, 0);
-            }
-            if (data == "Lup") {
-                mouse_buttons &= ~MOUSE_BUTTON_LEFT;
-                tud_hid_mouse_report(HID_ITF_PROTOCOL_MOUSE, mouse_buttons, 0, 0, 0, 0);
-            }
-            if (data == "Rdown") {
-                mouse_buttons |= MOUSE_BUTTON_RIGHT;
-                tud_hid_mouse_report(HID_ITF_PROTOCOL_MOUSE, mouse_buttons, 0, 0, 0, 0);
-            }
-            if (data == "Rup") {
-                mouse_buttons &= ~MOUSE_BUTTON_RIGHT;
-                tud_hid_mouse_report(HID_ITF_PROTOCOL_MOUSE, mouse_buttons, 0, 0, 0, 0);
-            }
-            if (data == "Mdown") {
-                mouse_buttons |= MOUSE_BUTTON_MIDDLE;
-                tud_hid_mouse_report(HID_ITF_PROTOCOL_MOUSE, mouse_buttons, 0, 0, 0, 0);
-            }
-            if (data == "Mup") {
-                mouse_buttons &= ~MOUSE_BUTTON_MIDDLE;
-                tud_hid_mouse_report(HID_ITF_PROTOCOL_MOUSE, mouse_buttons, 0, 0, 0, 0);
-            }
-            if (data == "Bdown") {
-                mouse_buttons |= MOUSE_BUTTON_BACKWARD;
-                tud_hid_mouse_report(HID_ITF_PROTOCOL_MOUSE, mouse_buttons, 0, 0, 0, 0);
-            }
-            if (data == "Bup") {
-                mouse_buttons &= ~MOUSE_BUTTON_BACKWARD;
-                tud_hid_mouse_report(HID_ITF_PROTOCOL_MOUSE, mouse_buttons, 0, 0, 0, 0);
-            }
-            if (data == "Fdown") {
-                mouse_buttons |= MOUSE_BUTTON_FORWARD;
-                tud_hid_mouse_report(HID_ITF_PROTOCOL_MOUSE, mouse_buttons, 0, 0, 0, 0);
-            }
-            if (data == "Fup") {
-                mouse_buttons &= ~MOUSE_BUTTON_FORWARD;
-                tud_hid_mouse_report(HID_ITF_PROTOCOL_MOUSE, mouse_buttons, 0, 0, 0, 0);
-            }
-            if (data.startsWith("move")) {
-                int deltaX = 0;
-                int deltaY = 0;
-                int button = 0;
-                int scroll = 0;
-                
-                int separatorIndex1 = data.indexOf('/');
-                    if (separatorIndex1 != -1) {
-                        // Parse deltaX
-                        deltaX = data.substring(4, separatorIndex1).toInt();
-
-                        // Cari indeks separator kedua
-                        int separatorIndex2 = data.indexOf('/', separatorIndex1 + 1);
-                        if (separatorIndex2 != -1) {
-                            // Parse deltaY
-                            deltaY = data.substring(separatorIndex1 + 1, separatorIndex2).toInt();
-
-                            // Cari indeks separator ketiga
-                            int separatorIndex3 = data.indexOf('/', separatorIndex2 + 1);
-                            if (separatorIndex3 != -1) {
-                                // Parse button
-                                button = data.substring(separatorIndex2 + 1, separatorIndex3).toInt();
-
-                                // Parse scroll
-                                scroll = data.substring(separatorIndex3 + 1).toInt();
-
-                                
-                            }
-                        }
-                    }
-                    // Cetak hasil parsing
-                    Serial.print("deltaX: ");
-                    Serial.println(deltaX);
-                    Serial.print("deltaY: ");
-                    Serial.println(deltaY);
-                    Serial.print("button: ");
-                    Serial.println(button);
-                    Serial.print("scroll: ");
-                    Serial.println(scroll);
-                    bool result = tud_hid_mouse_report(HID_ITF_PROTOCOL_MOUSE, button, deltaX, deltaY, scroll, 0);
-                    test(HID_ITF_PROTOCOL_MOUSE, button, deltaX, deltaY, scroll, 0);
+            if (Serial.available() > 0) {
+                String input = Serial.readStringUntil('\n');
+                int id, btn, delta_x, delta_y, scroll;
+                if (sscanf(input.c_str(), "%d/%d/%d/%d/%d", &id, &btn, &delta_x, &delta_y, &scroll) == 5) {
+                    bool result = tud_hid_abs_mouse_report(id, btn, delta_x, delta_y, scroll, 0);
+                    process_input(id, btn, delta_x, delta_y, scroll, 0);
                     Serial.print("result ");
                     Serial.println(result);
-                    // Serial.print(deltaX);
-                    // Serial.print(" ");
-                    // Serial.print(deltaY);
-                    Serial.print(" response ");
-                    
-                    long elapsedTime = millis() - lasttime;
-
-                    Serial.println(elapsedTime);
-                    lasttime = millis();
+                } else {
+                    Serial.println("Invalid input format. Expected format: btn/deltax/deltay/scroll");
+                }
                 
             }
         }

@@ -161,17 +161,19 @@ void process_input(int id, int btn, int delta_x, int delta_y, int scroll, int pa
     buffer[7] = static_cast<uint8_t>(pan);
     
 
-    Serial.print("Buffer: ");
+    
     for (int i = 0; i < sizeof(buffer); i++) {
         Serial.printf("%02X ", buffer[i]);
     }
     
 }
-#define RX2 15
-#define TX2 16
+#define RX5 15
+#define TX5 16
+int failx = 0;
+int faily=0;
 static uint8_t mouse_buttons = 0;
 void app_main(void)
-{   Serial2.begin(115200, SERIAL_8N1, RX2, TX2);
+{   Serial2.begin(115200, SERIAL_8N1, RX5, TX5);                //SERIAL 2 NOT SERIAL 1!!!!
     Serial.begin(115200);
 
     ESP_LOGI(TAG, "USB initialization");
@@ -186,18 +188,62 @@ void app_main(void)
     ESP_ERROR_CHECK(tinyusb_driver_install(&tusb_cfg));
     ESP_LOGI(TAG, "USB initialization DONE");
     long lasttime = 0;
+    
     while (1) {
         
         if (tud_mounted()) {
-            if (Serial.available() > 0) {
+            if (Serial.available()>0){
                 String input = Serial.readStringUntil('\n');
                 int id, btn, delta_x, delta_y, scroll;
                 if (sscanf(input.c_str(), "%d/%d/%d/%d/%d", &id, &btn, &delta_x, &delta_y, &scroll) == 5) {
-                    bool result = tud_hid_abs_mouse_report(id, btn, delta_x, delta_y, scroll, 0);
                     process_input(id, btn, delta_x, delta_y, scroll, 0);
-                    Serial.print("result ");
-                    Serial.println(result);
+                    tud_hid_abs_mouse_report(HID_ITF_PROTOCOL_MOUSE, btn, delta_x, delta_y, scroll, 0);
                 } else {
+                    Serial.println(input);
+                    Serial.println("Invalid input format. Expected format: btn/deltax/deltay/scroll");
+                }
+            }
+            if (Serial2.available() > 0) {
+                String input = Serial2.readStringUntil('\n');
+                
+                int id, btn, delta_x, delta_y, scroll;
+                if (sscanf(input.c_str(), "%d/%d/%d/%d/%d", &id, &btn, &delta_x, &delta_y, &scroll) == 5) {
+                    bool result = 0;
+                    process_input(id, btn, delta_x, delta_y, scroll, 0);
+                    //FAILURE HANDLER (usually because<8ms since last report)
+                    if (!failx && !faily) {//if both fail is empty
+                        result = tud_hid_abs_mouse_report(HID_ITF_PROTOCOL_MOUSE, btn, delta_x, delta_y, scroll, 0);//try
+                        if (!result) {//if failed
+                            failx = delta_x;
+                            faily = delta_y;
+                        }
+                        long currentTime = millis();
+                        long timeDiff = currentTime - lasttime;
+                        int fps = 1000/timeDiff;
+                        lasttime = currentTime;
+                        Serial.printf(" %ld ms, fps: %d, result: %s\n", 
+                        timeDiff, fps, result ? "ok" : "\tFAILED");
+                    }
+                    else{//if one of them is not empty
+                        result = tud_hid_abs_mouse_report(HID_ITF_PROTOCOL_MOUSE, btn, delta_x + failx, delta_y + faily, scroll, 0);//add failure + last delta
+                        if (result) {//check it
+                            failx = 0;
+                            faily = 0;
+                        }
+                        long currentTime = millis();
+                        long timeDiff = currentTime - lasttime;
+                        int fps = 1000/timeDiff;
+                        lasttime = currentTime;
+                        Serial.printf(" %ld ms, fps: %d, result: %s\n", 
+                        timeDiff, fps, result ? "\t SUCCESS SENT PREV FAIL" : "\tFAILED");
+                    }
+                    
+                    
+                    
+                    Serial.flush();
+                    
+                } else {
+                    Serial.println(input);
                     Serial.println("Invalid input format. Expected format: btn/deltax/deltay/scroll");
                 }
                 

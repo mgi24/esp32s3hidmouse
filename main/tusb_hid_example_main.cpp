@@ -239,7 +239,7 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id,
  * @brief FreeRTOS task: baca data dari Serial2 (HID reader, RX=17 TX=18),
  *        forward ke Serial default (USB/UART0) sebagai passthrough.
  */
-static void parse_and_send_mouse(const char *line, uint32_t &recv_count, uint32_t &sent_count) {
+static void parse_and_send_mouse(const char *line, uint32_t &recv_count, uint32_t &sent_count, uint32_t &fail_count) {
   recv_count++;
 
   const char *p = strchr(line, '|');
@@ -279,11 +279,13 @@ static void parse_and_send_mouse(const char *line, uint32_t &recv_count, uint32_
         accum_y = 0;
         accum_wheel = 0;
       } else {
+        fail_count++;
         accum_x += (int16_t)x;
         accum_y += (int16_t)y;
         accum_wheel += (int8_t)wheel;
       }
     } else {
+      fail_count++;
       accum_x += (int16_t)x;
       accum_y += (int16_t)y;
       accum_wheel += (int8_t)wheel;
@@ -301,6 +303,7 @@ static void serial2_forward_task(void *arg) {
 
   uint32_t recv_count = 0;
   uint32_t sent_count = 0;
+  uint32_t fail_count = 0;
   uint32_t last_report_time = millis();
 
   while (true) {
@@ -313,7 +316,7 @@ static void serial2_forward_task(void *arg) {
       if (c == '\n' || c == '\r') {
         if (line_idx > 0) {
           line_buf[line_idx] = '\0';
-          parse_and_send_mouse(line_buf, recv_count, sent_count);
+          parse_and_send_mouse(line_buf, recv_count, sent_count, fail_count);
           line_idx = 0;
         }
       } else {
@@ -329,9 +332,11 @@ static void serial2_forward_task(void *arg) {
     // Print rate metrics once per second
     uint32_t now = millis();
     if (now - last_report_time >= 1000) {
-      Serial.printf("[RATE] Recv: %u/sec, Sent: %u/sec\n", (unsigned int)recv_count, (unsigned int)sent_count);
+      Serial.printf("[RATE] Recv: %u/sec, Sent: %u/sec, Fail: %u/sec\n", 
+                    (unsigned int)recv_count, (unsigned int)sent_count, (unsigned int)fail_count);
       recv_count = 0;
       sent_count = 0;
+      fail_count = 0;
       last_report_time = now;
     }
 

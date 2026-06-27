@@ -9,7 +9,7 @@ Projek ini mengimplementasikan USB HID Mouse + Keyboard menggunakan library Tiny
 
 ## 1. Fitur Utama & Pembacaan Serial dari Pin (Serial Passthrough)
 
-Di dalam file [tusb_hid_example_main.cpp](file:///c:/Users/mishb/Documents/tusb_hid/main/tusb_hid_example_main.cpp), terdapat sistem pembacaan data serial dari perangkat HID reader eksternal yang di-forward ke PC sebagai berikut:
+Di dalam file source utama ([tusb_mouse_ethernet.cpp](file:///d:/CODING/tusb_hid/main/tusb_mouse_ethernet.cpp) atau [tusb_mouse.cpp](file:///d:/CODING/tusb_hid/main/tusb_mouse.cpp)), terdapat sistem pembacaan data serial dari perangkat HID reader eksternal yang di-forward ke PC sebagai berikut:
 
 * **Inisialisasi Serial2:**
   Diinisialisasi di fungsi `app_main()` dengan baud rate `115200` pada pin berikut:
@@ -42,7 +42,7 @@ Di dalam file [tusb_hid_example_main.cpp](file:///c:/Users/mishb/Documents/tusb_
 
 Untuk mengatasi limitasi default TinyUSB di mana koordinat Mouse relatif hanya mendukung nilai dari `-127` sampai `127` (8-bit), telah dilakukan modifikasi di tingkat komponen TinyUSB agar mendukung resolusi **16-bit** (`-32767` sampai `32767`) layaknya mouse gaming modern:
 
-### A. Modifikasi File [hid_device.h](file:///c:/Users/mishb/Documents/tusb_hid/managed_components/espressif__tinyusb/src/class/hid/hid_device.h)
+### A. Modifikasi File [hid_device.h](file:///d:/CODING/tusb_hid/managed_components/espressif__tinyusb/src/class/hid/hid_device.h)
 * **Mengubah Descriptor Template Mouse (`TUD_HID_REPORT_DESC_MOUSE`):**
   Mengganti makro logical min/max 8-bit menjadi makro multi-byte 16-bit (`_N`) dan mengubah ukuran report menjadi 16 bit.
   ```c
@@ -54,7 +54,7 @@ Untuk mengatasi limitasi default TinyUSB di mana koordinat Mouse relatif hanya m
 * **Mengubah Signature API Helper:**
   Mengubah tipe parameter `x` dan `y` dari `int8_t` menjadi `int16_t` pada fungsi `tud_hid_n_mouse_report` dan `tud_hid_mouse_report`.
 
-### B. Modifikasi File [hid.h](file:///c:/Users/mishb/Documents/tusb_hid/managed_components/espressif__tinyusb/src/class/hid/hid.h)
+### B. Modifikasi File [hid.h](file:///d:/CODING/tusb_hid/managed_components/espressif__tinyusb/src/class/hid/hid.h)
 * **Mengubah Struct Mouse Report (`hid_mouse_report_t`):**
   Mengubah tipe data variabel `x` dan `y` dari `int8_t` menjadi `int16_t`:
   ```c
@@ -67,11 +67,11 @@ Untuk mengatasi limitasi default TinyUSB di mana koordinat Mouse relatif hanya m
   } hid_mouse_report_t;
   ```
 
-### C. Modifikasi File [hid_device.c](file:///c:/Users/mishb/Documents/tusb_hid/managed_components/espressif__tinyusb/src/class/hid/hid_device.c)
+### C. Modifikasi File [hid_device.c](file:///d:/CODING/tusb_hid/managed_components/espressif__tinyusb/src/class/hid/hid_device.c)
 * **Mengubah Implementasi Fungsi:**
   Menyesuaikan argumen parameter `x` dan `y` pada implementasi `tud_hid_n_mouse_report()` dari `int8_t` menjadi `int16_t`.
 
-### D. Modifikasi File [tusb_hid_example_main.cpp](file:///c:/Users/mishb/Documents/tusb_hid/main/tusb_hid_example_main.cpp)
+### D. Modifikasi File Source Utama ([tusb_mouse_ethernet.cpp](file:///d:/CODING/tusb_hid/main/tusb_mouse_ethernet.cpp) dan [tusb_mouse.cpp](file:///d:/CODING/tusb_hid/main/tusb_mouse.cpp))
 * **Menyesuaikan Variabel Demo:**
   Mengubah tipe data penampung delta `delta_x` dan `delta_y` di fungsi demo `app_send_hid_demo()` ke `int16_t` agar data presisi tidak terpotong (truncate) saat dikirim ke host PC.
 
@@ -84,3 +84,35 @@ Untuk mengatasi limitasi default TinyUSB di mana koordinat Mouse relatif hanya m
 | **GPIO 17 (RX2)** | TX Device | Menerima data serial dari perangkat HID reader |
 | **GPIO 18 (TX2)** | RX Device | Mengirim data ke perangkat (opsional/passthrough) |
 | **GND** | GND | Ground Bersama |
+
+---
+
+## 4. Varian Projek & Cara Mengubah Varian
+
+Projek ini memiliki dua varian file source utama:
+
+1. **Varian dengan Ethernet ([tusb_mouse_ethernet.cpp](file:///d:/CODING/tusb_hid/main/tusb_mouse_ethernet.cpp))**:
+   Mengaktifkan USB HID Mouse + Keyboard sekaligus menginisialisasi modul Ethernet (W5500/W5100).
+2. **Varian tanpa Ethernet ([tusb_mouse.cpp](file:///d:/CODING/tusb_hid/main/tusb_mouse.cpp))**:
+   Hanya mengaktifkan USB HID Mouse + Keyboard tanpa menginisialisasi modul Ethernet.
+
+### Cara Mengganti Varian yang Di-build:
+Untuk mengganti varian yang dicompile, edit file [main/CMakeLists.txt](file:///d:/CODING/tusb_hid/main/CMakeLists.txt) pada bagian `SRCS`.
+
+* Jika ingin menggunakan varian **dengan Ethernet**:
+  ```cmake
+  idf_component_register(
+      SRCS "tusb_mouse_ethernet.cpp"
+      INCLUDE_DIRS "."
+      PRIV_REQUIRES esp_driver_gpio Ethernet
+  )
+  ```
+
+* Jika ingin menggunakan varian **tanpa Ethernet**:
+  ```cmake
+  idf_component_register(
+      SRCS "tusb_mouse.cpp"
+      INCLUDE_DIRS "."
+      PRIV_REQUIRES esp_driver_gpio Ethernet
+  )
+  ```

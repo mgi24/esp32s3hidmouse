@@ -363,6 +363,55 @@ static void serial2_forward_task(void *arg) {
   }
 }
 
+static void ethernet_server_task(void *arg) {
+  uint32_t recv_count = 0;
+  uint32_t last_report_time = millis();
+
+  while (true) {
+    EthernetClient client = server.available();
+    if (client) {
+      Serial.println("[ETH] Python Client connected");
+      String currentLine = "";
+      while (client.connected()) {
+        if (client.available()) {
+          char c = client.read();
+          if (c == '\n') {
+            if (currentLine.length() > 0) {
+              recv_count++;
+              // Print pesan yang diterima ke Serial monitor
+              // Serial.print("[ETH-RCV] ");
+              // Serial.println(currentLine);
+              currentLine = "";
+            }
+          } else if (c != '\r') {
+            currentLine += c;
+          }
+        } else {
+          vTaskDelay(pdMS_TO_TICKS(1));
+        }
+
+        // Print rate metrics while client is connected
+        uint32_t now = millis();
+        if (now - last_report_time >= 1000) {
+          Serial.printf("[ETH-RATE] Recv: %u/sec\n", (unsigned int)recv_count);
+          recv_count = 0;
+          last_report_time = now;
+        }
+      }
+      Serial.println("[ETH] Python Client disconnected");
+    }
+
+    uint32_t now = millis();
+    if (now - last_report_time >= 1000) {
+      Serial.printf("[ETH-RATE] Recv: %u/sec\n", (unsigned int)recv_count);
+      recv_count = 0;
+      last_report_time = now;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+}
+
 /********* Application ***************/
 
 void app_main(void) {
@@ -398,6 +447,9 @@ void app_main(void) {
 
   // Task untuk forward Serial2 → Serial default & parse ke TinyUSB
   xTaskCreate(serial2_forward_task, "serial2_fwd", 3072, NULL, 5, NULL);
+
+  // Task untuk menangani Ethernet Socket Server (Python client input)
+  xTaskCreate(ethernet_server_task, "eth_server", 4096, NULL, 5, NULL);
 
   ESP_LOGI(TAG, "USB initialization");
   tinyusb_config_t tusb_cfg = TINYUSB_DEFAULT_CONFIG();
